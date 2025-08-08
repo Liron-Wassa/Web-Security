@@ -5,6 +5,7 @@
   "require_digit": true,
   "require_special": true,
   "blocked_passwords": ["123456", "password", "admin123"],
+  "password_history": 3,
   "login_attempts_limit": 3
 
 }
