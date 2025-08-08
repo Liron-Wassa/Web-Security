@@ -4,5 +4,7 @@
   "require_lowercase": true,
   "require_digit": true,
   "require_special": true,
-  "blocked_passwords": ["123456", "password", "admin123"]
+  "blocked_passwords": ["123456", "password", "admin123"],
+  "login_attempts_limit": 3
+
 }

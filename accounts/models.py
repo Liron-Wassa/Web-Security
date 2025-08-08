@@ -5,6 +5,8 @@ class SecureUser(models.Model):
     email = models.EmailField(unique=True)
     password_hash = models.CharField(max_length=128)
     salt = models.BinaryField()
+    login_attempts = models.IntegerField(default=0)  # ניהול ניסיונות
 
     def __str__(self):
         return self.username
+
