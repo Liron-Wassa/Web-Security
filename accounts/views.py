@@ -3,7 +3,7 @@ import json
 import hmac, hashlib
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .forms import RegisterForm
+from .forms import RegisterForm, LoginForm
 from .models import SecureUser
 
 def load_config():
@@ -55,3 +55,40 @@ def register_view(request):
         form = RegisterForm()
 
     return render(request, 'accounts/register.html', {'form': form})
+
+
+def login_view(request):
+    config = load_config()
+    max_attempts = config.get("login_attempts_limit", 3)
+
+    form = LoginForm(request.POST or None)
+
+    if request.method == 'POST' and form.is_valid():
+        username = form.cleaned_data['username']
+        password = form.cleaned_data['password']
+
+        user = SecureUser.objects.filter(username=username).first()
+        if not user:
+            messages.error(request, "User not found.")
+            return render(request, 'accounts/login.html', {'form': form})
+
+        if user.login_attempts >= max_attempts:
+            messages.error(request, "Account locked after too many failed login attempts.")
+            return render(request, 'accounts/login.html', {'form': form})
+
+        computed_hash = hmac.new(user.salt, password.encode(), hashlib.sha256).hexdigest()
+        if computed_hash == user.password_hash:
+            user.login_attempts = 0
+            user.save()
+            messages.success(request, "Login successful.")
+            # נשארים באותו עמוד ומציגים את ההודעה
+        else:
+            user.login_attempts += 1
+            user.save()
+            remaining = max_attempts - user.login_attempts
+            if remaining > 0:
+                messages.error(request, f"Invalid password. {remaining} attempts left.")
+            else:
+                messages.error(request, "Account locked after too many failed attempts.")
+
+    return render(request, 'accounts/login.html', {'form': form})
