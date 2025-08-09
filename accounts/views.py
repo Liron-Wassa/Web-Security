@@ -1,9 +1,11 @@
 import os
 import json
 import hmac, hashlib
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from .forms import RegisterForm
+from .forms import ChangePasswordForm
 from .models import SecureUser
 
 def load_config():
@@ -55,3 +57,34 @@ def register_view(request):
         form = RegisterForm()
 
     return render(request, 'accounts/register.html', {'form': form})
+
+@login_required(login_url='/login/')
+def change_password_view(request):
+    config = load_config()
+
+    if request.method == 'POST':
+        form = ChangePasswordForm(request.POST)
+        if form.is_valid():
+            user = request.user
+            old_password = form.cleaned_data['old_password']
+            new_password = form.cleaned_data['new_password']
+
+            salt = user.salt
+            h = hmac.new(salt, old_password.encode(), hashlib.sha256).hexdigest()
+            if h != user.password_hash:
+                messages.error(request, "Old password is incorrect.")
+                return render(request, 'accounts/change_password.html', {'form': form})
+
+            new_salt = os.urandom(16)
+            new_hash = hmac.new(new_salt, new_password.encode(), hashlib.sha256).hexdigest()
+
+            user.salt = new_salt
+            user.password_hash = new_hash
+            user.save()
+
+            messages.success(request, "Password changed successfully.")
+            return redirect('profile') 
+    else:
+        form = ChangePasswordForm()
+
+    return render(request, 'accounts/change_password.html', {'form': form})
