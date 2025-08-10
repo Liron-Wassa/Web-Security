@@ -42,3 +42,6 @@ class ChangePasswordForm(forms.Form):
         if new_password.lower() in [p.lower() for p in config.get("blocked_passwords", [])]:
             raise forms.ValidationError("This password is blocked. Please choose another.")
         return new_password
+class LoginForm(forms.Form):
+    username = forms.CharField(max_length=50)
+    password = forms.CharField(widget=forms.PasswordInput())
