@@ -1,11 +1,24 @@
 import os
 import json
-import hmac, hashlib
+import hmac
+import hashlib
+from functools import wraps
+
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .forms import RegisterForm, LoginForm
-from .forms import ChangePasswordForm
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
+
+from .forms import RegisterForm, LoginForm, ChangePasswordForm
 from .models import SecureUser
+
+def secure_login_required(view_func):
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.session.get('secure_user_id'):
+            return redirect(f'/login/?next={request.path}')
+        return view_func(request, *args, **kwargs)
+    return wrapper
 
 def load_config():
     with open("config.json", "r") as f:
@@ -36,27 +49,24 @@ def register_view(request):
             email = form.cleaned_data['email']
             password = form.cleaned_data['password']
 
+            # Check your custom password policy
             if not is_valid_password(password, config):
                 messages.error(request, "Password does not meet security requirements.")
                 return render(request, 'accounts/register.html', {'form': form})
 
-            salt = os.urandom(16)
-            h = hmac.new(salt, password.encode(), hashlib.sha256).hexdigest()
-
-            SecureUser.objects.create(
+            # Create the user with Django's secure hashing
+            SecureUser.objects.create_user(
                 username=username,
                 email=email,
-                password_hash=h,
-                salt=salt
+                password=password
             )
 
             messages.success(request, "User registered successfully.")
-            return redirect('register')
+            return redirect('login')  # redirect to login instead of register
     else:
         form = RegisterForm()
 
     return render(request, 'accounts/register.html', {'form': form})
-
 
 def login_view(request):
     config = load_config()
@@ -68,8 +78,9 @@ def login_view(request):
         username = form.cleaned_data['username']
         password = form.cleaned_data['password']
 
-        user = SecureUser.objects.filter(username=username).first()
-        if not user:
+        try:
+            user = SecureUser.objects.get(username=username)
+        except SecureUser.DoesNotExist:
             messages.error(request, "User not found.")
             return render(request, 'accounts/login.html', {'form': form})
 
@@ -77,12 +88,14 @@ def login_view(request):
             messages.error(request, "Account locked after too many failed login attempts.")
             return render(request, 'accounts/login.html', {'form': form})
 
-        computed_hash = hmac.new(user.salt, password.encode(), hashlib.sha256).hexdigest()
-        if computed_hash == user.password_hash:
+        auth_user = authenticate(request, username=username, password=password)
+
+        if auth_user is not None:
             user.login_attempts = 0
             user.save()
+            login(request, auth_user)  # Django handles the session
             messages.success(request, "Login successful.")
-            # נשארים באותו עמוד ומציגים את ההודעה
+            return redirect(request.GET.get('next', 'profile'))
         else:
             user.login_attempts += 1
             user.save()
@@ -94,7 +107,8 @@ def login_view(request):
 
     return render(request, 'accounts/login.html', {'form': form})
 
-@login_required(login_url='/login/')
+
+@login_required
 def change_password_view(request):
     config = load_config()
 
@@ -105,21 +119,22 @@ def change_password_view(request):
             old_password = form.cleaned_data['old_password']
             new_password = form.cleaned_data['new_password']
 
-            salt = user.salt
-            h = hmac.new(salt, old_password.encode(), hashlib.sha256).hexdigest()
-            if h != user.password_hash:
+            # Check old password using Django's method
+            if not user.check_password(old_password):
                 messages.error(request, "Old password is incorrect.")
                 return render(request, 'accounts/change_password.html', {'form': form})
 
-            new_salt = os.urandom(16)
-            new_hash = hmac.new(new_salt, new_password.encode(), hashlib.sha256).hexdigest()
+            # Validate new password against your custom policy
+            if not is_valid_password(new_password, config):
+                messages.error(request, "New password does not meet security requirements.")
+                return render(request, 'accounts/change_password.html', {'form': form})
 
-            user.salt = new_salt
-            user.password_hash = new_hash
+            # Set the new password securely
+            user.set_password(new_password)
             user.save()
 
             messages.success(request, "Password changed successfully.")
-            return redirect('profile') 
+            return redirect('profile')
     else:
         form = ChangePasswordForm()
 
