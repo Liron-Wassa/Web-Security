@@ -8,6 +8,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import logout
 
 from .forms import RegisterForm, LoginForm, ChangePasswordForm
 from .models import SecureUser
@@ -93,9 +94,9 @@ def login_view(request):
         if auth_user is not None:
             user.login_attempts = 0
             user.save()
-            login(request, auth_user)  # Django handles the session
+            login(request, auth_user)  
             messages.success(request, "Login successful.")
-            return redirect(request.GET.get('next', 'profile'))
+            return redirect('login')
         else:
             user.login_attempts += 1
             user.save()
@@ -133,8 +134,11 @@ def change_password_view(request):
             user.set_password(new_password)
             user.save()
 
+             # Log the user out after password change
+            logout(request)
+
             messages.success(request, "Password changed successfully.")
-            return redirect('profile')
+            return redirect('login')  # redirect to your login URL
     else:
         form = ChangePasswordForm()
 
