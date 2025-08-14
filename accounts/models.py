@@ -1,5 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.utils import timezone
+from datetime import timedelta
 
 class SecureUserManager(BaseUserManager):
     def create_user(self, username, email, password=None, **extra_fields):
@@ -36,3 +38,36 @@ class SecureUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
+
+
+class Customer(models.Model):
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20)
+    address = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
+
+    class Meta:
+        db_table = 'customers'
+
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(SecureUser, on_delete=models.CASCADE)
+    token = models.CharField(max_length=64, unique=True)  # SHA-1 hash
+    created_at = models.DateTimeField(auto_now_add=True)
+    used = models.BooleanField(default=False)
+    
+    def is_expired(self):
+        # Token expires after 1 hour
+        return timezone.now() > self.created_at + timedelta(hours=1)
+    
+    def __str__(self):
+        return f"Reset token for {self.user.username}"
+    
+    class Meta:
+        db_table = 'password_reset_tokens'
